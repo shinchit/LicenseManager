@@ -38,6 +38,8 @@ import jp.blogspot.save-dep-mukku.util.Purchase;
 public class LicenseManager {
     private static final String TAG = "LicenseManager";
 
+    /* 使用にあたり設定する項目 */
+
     // ライセンス購入の任意の識別子。購入後の正当性を確かめるために使用する
     private static final String payload = "適当な識別子 ex) LicensePayload";
 
@@ -46,6 +48,12 @@ public class LicenseManager {
 
     // 購入アイテム（ライセンス） * Google Play Developer Consoleより取得
     private static final String license = "アプリのライセンスID";
+
+    // Google Play License Key * Google Play Developer Consoleより取得
+    private static final String GOOGLE_PLAY_LICENSE_KEY = "アプリのライセンスキー";
+
+    /* 設定項目はここまで */
+
 
     // ライセンス購入フラグ
     private boolean licensePurchaseFlag = false;
@@ -59,7 +67,7 @@ public class LicenseManager {
     public LicenseManager(Activity activity) {
         this.activity = activity;
 
-        String base64EncodedPublicKey = activity.getString(R.string.google_play_key);
+        String base64EncodedPublicKey = activity.getString(GOOGLE_PLAY_LICENSE_KEY);
         mHelper = new IabHelper(activity, base64EncodedPublicKey);
 
         Log.d("mHelper:", mHelper.toString());
