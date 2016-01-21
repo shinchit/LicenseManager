@@ -27,10 +27,9 @@ import android.app.Activity;
 import android.util.Log;
 import android.view.View;
 
-import jp.blogspot.save-dep-mukku.util.IabHelper;
-import jp.blogspot.save-dep-mukku.util.IabResult;
-import jp.blogspot.save-dep-mukku.util.Inventory;
-import jp.blogspot.save-dep-mukku.util.Purchase;
+import com.google.common.base.Function;
+
+import org.jdeferred.android.AndroidDeferredManager;
 
 /**
  * Created by SHINCHI, Takahiro on 2015/05/06.
@@ -64,57 +63,73 @@ public class LicenseManager {
     // アプティビティ
     private Activity activity;
 
-    public LicenseManager(Activity activity) {
-        this.activity = activity;
+    // アクティビティのUI更新用のコールバック関数
+    private Function callback;
 
-        String base64EncodedPublicKey = activity.getString(GOOGLE_PLAY_LICENSE_KEY);
+    public LicenseManager(Activity activity, Function callback) {
+        this.activity = activity;
+        this.callback = callback;
+
+        String base64EncodedPublicKey = GOOGLE_PLAY_LICENSE_KEY;
         mHelper = new IabHelper(activity, base64EncodedPublicKey);
 
-        Log.d("mHelper:", mHelper.toString());
+        Log.d(TAG, mHelper.toString());
 
         // ライセンス購入セットアップ開始
-        mHelper.startSetup(new IabHelper.OnIabSetupFinishedListener() {
-            public void onIabSetupFinished(IabResult result) {
-                if (!result.isSuccess()) {
-                    Log.d(TAG, "セットアップ失敗 結果: " + result);
-                    return;
-                }
-                // オブジェクトが生成されていない
-                if (mHelper == null) return;
-                Log.d(TAG, "セットアップ成功。 購入情報照会");
-                // 購入情報照会
-                mHelper.queryInventoryAsync(mGotInventoryListener);
-            }
-        });
+        AndroidDeferredManager dm = new AndroidDeferredManager();
+        try {
+            dm.when(() -> {
+                mHelper.startSetup(new IabHelper.OnIabSetupFinishedListener() {
+                    public void onIabSetupFinished(IabResult result) {
+                        if (!result.isSuccess()) {
+                            Log.d(TAG, "セットアップ失敗 結果: " + result);
+                            return;
+                        }
+                        // オブジェクトが生成されていない
+                        if (mHelper == null) return;
+                        Log.d(TAG, "セットアップ成功。 購入情報照会へ");
+                        mHelper.queryInventoryAsync(mGotInventoryListener);
+                    }
+                });
+            }).done(result -> {
+                // do nothing
+            }).fail(tr -> {
+                tr.printStackTrace();
+            }).waitSafely();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
-    // Listener that's called when we finish querying the items and subscriptions we own
     IabHelper.QueryInventoryFinishedListener mGotInventoryListener = new IabHelper.QueryInventoryFinishedListener() {
         public void onQueryInventoryFinished(IabResult result, Inventory inventory) {
-
             // オブジェクトが生成されていない
-            if (mHelper == null) return;
-
+            if (result == null) {
+                Log.d(TAG, "IabResultがnull");
+                return;
+            }
             // 購入情報照会失敗
             if (result.isFailure()) {
                 Log.d(TAG, "購入情報照会失敗 結果 : " + result);
                 return;
             }
-
             //　購読情報があるかどうか？
             Purchase subscriptionPurchase = inventory.getPurchase(license);
-
             // 購読購入が済んでいる場合はフラグを変更
             licensePurchaseFlag = (subscriptionPurchase != null && verifyDeveloperPayload(subscriptionPurchase));
+            Log.d(TAG, "購入状況をセットした。購入ステータス： " + String.valueOf(licensePurchaseFlag));
+
+            // callbackをコールしてUIを更新
+            callback.apply(null);
         }
     };
 
     public boolean isLicensePurchased() {
-        return this.licensePurchaseFlag;
+        return licensePurchaseFlag;
     }
 
     public IabHelper getIabHelper() {
-        return this.mHelper;
+        return mHelper;
     }
 
     // ライセンス購入ボタン
@@ -130,12 +145,15 @@ public class LicenseManager {
     }
 
     // 購入処理が完了した後に呼ばれる処理
-    IabHelper.OnIabPurchaseFinishedListener mPurchaseFinishedListener = new IabHelper.OnIabPurchaseFinishedListener() {
+    public IabHelper.OnIabPurchaseFinishedListener mPurchaseFinishedListener = new IabHelper.OnIabPurchaseFinishedListener() {
         public void onIabPurchaseFinished(IabResult result, Purchase purchase) {
             Log.d(TAG, "Purchase finished: " + result + ", purchase: " + purchase);
 
             // オブジェクトが生成されていない場合は終了
-            if (mHelper == null) return;
+            if (mHelper == null) {
+                Log.d(TAG, "IabHelperが生成されていません。");
+                return;
+            }
 
             // エラー時の処理
             if (result.isFailure()) {
@@ -153,23 +171,18 @@ public class LicenseManager {
     };
 
     // 識別子をチェックする
-    boolean verifyDeveloperPayload(Purchase p) {
+    public boolean verifyDeveloperPayload(Purchase p) {
         String payload = p.getDeveloperPayload();
         Log.d(TAG, "in verify, payload is : " + payload);
-        return true;
+        return LicenseManager.payload.equals(payload);
     }
 
     // onDestroyで必ず呼ぶこと
-    void destroy() {
+    public void destroy() {
         Log.d(TAG, "Destroying helper.");
         if (mHelper != null) {
             mHelper.dispose();
             mHelper = null;
         }
     }
-
-    Activity getActivity() {
-        return this.activity;
-    }
-
 }
